@@ -1,0 +1,69 @@
+variables:
+  DOCKER_REGISTRY: REPLACE_DOCKER_REGISTRY_URL
+  AWS_DEFAULT_REGION: eu-central-1
+  APP_NAME: gridmaster-initialization
+  https_proxy: $CODE_PROXY
+  http_proxy: $CODE_PROXY
+  HTTP_PROXY: $CODE_PROXY
+  HTTPS_PROXY: $CODE_PROXY
+  LATEST_POETRY_MAJOR: "1.1"
+  LATEST_PYTHON: "3.9"
+
+
+buildDocker:
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: always
+
+  variables:
+    REGISTRY: $DOCKER_REGISTRY/$APP_NAME
+  parallel:
+    matrix:
+      - PYTHON_VERSION:
+        - "3.8"
+        - "3.9"
+        - "3.10"
+        POETRY_VERSION:
+        - "1.1.11"
+
+
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"credsStore\":\"ecr-login\"}" > /kaniko/.docker/config.json
+    - POETRY_VERSION_SHORT="$(echo "$POETRY_VERSION" | cut -d '.' -f1-2)"
+    - |
+      if [ "$PYTHON_VERSION" != "$LATEST_PYTHON" ]; then
+        /kaniko/executor \
+          --context $CI_PROJECT_DIR \
+          --dockerfile $CI_PROJECT_DIR/Dockerfile \
+          --destination $REGISTRY:python${PYTHON_VERSION} \
+          --destination $REGISTRY:python${PYTHON_VERSION}-${CI_COMMIT_SHORT_SHA} \
+          --build-arg http_proxy \
+          --build-arg https_proxy \
+          --build-arg no_proxy \
+          --build-arg HTTP_PROXY \
+          --build-arg HTTPS_PROXY \
+          --build-arg PYTHON_VERSION=$PYTHON_VERSION \
+          --build-arg POETRY_VERSION=$POETRY_VERSION
+      else
+        /kaniko/executor \
+          --context $CI_PROJECT_DIR \
+          --dockerfile $CI_PROJECT_DIR/Dockerfile \
+          --destination $REGISTRY:python${PYTHON_VERSION} \
+          --destination $REGISTRY:python${PYTHON_VERSION}-${CI_COMMIT_SHORT_SHA} \
+          --destination $REGISTRY:latest \
+          --build-arg http_proxy \
+          --build-arg https_proxy \
+          --build-arg no_proxy \
+          --build-arg HTTP_PROXY \
+          --build-arg HTTPS_PROXY \
+          --build-arg PYTHON_VERSION=$PYTHON_VERSION \
+          --build-arg POETRY_VERSION=$POETRY_VERSION
+      fi
